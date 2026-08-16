@@ -52,6 +52,9 @@ _MODULES = (
     "builtins.luau",    # range, sorted, min/max/sum, cursors, list/dict methods
     "sets.luau",        # set and frozenset, plus update/clear/copy
     "numbers.luau",     # bit inspection, base conversion, divmod, slice objects
+    "classes.luau",     # classes, descriptors, dict views, match, misc helpers
+    "typing.luau",      # the inert typing surface, and import
+    "async.luau",       # generators, coroutines, asyncio, inspect
 )
 
 

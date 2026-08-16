@@ -43,19 +43,41 @@ buffer sized by `--luau-heap`. Pointers are offsets into it.
 
 ## Status
 
-The opcode table is covered. The Python object model is **not**: asmpython
-provides it as 15,000 lines of C that Luau cannot link, so the 274 `apy_*`
-functions are still to be ported. Until then a program that does more than
-arithmetic and control flow stops at the builtin it needed, naming it:
+The opcode table is covered, and all **274** exported `apy_*` symbols are
+implemented in `src/luaupy/luau/`. What remains is verification against real
+compiled programs rather than against the ABI in isolation.
 
-```
-luaupy: apy_str_join is not implemented yet
-```
+Known gaps, each recorded where it lives rather than papered over:
 
-The backend reports `ready = False`, so every build warns.
+* **str is bytes, not code points.** Case conversion and the classification
+  predicates agree with Python for ASCII and differ above it. The C reaches a
+  909-line unicode table that is not ported.
+* **MRO is depth-first**, not C3. The two agree for every hierarchy without
+  diamonds.
+* **`float.hex` / `float.fromhex` raise.** They need an exact
+  binary-exponent formatter, and the whole reason those methods exist is that
+  a decimal approximation loses bits.
+* **Generator driving is unverified.** The state-machine protocol follows the
+  C's shape, but nothing has run generator code the frontend emitted.
+
+The backend still reports `ready = False`.
 
 ## Tests
 
 ```
-python -m pytest -q
+python -m pytest -q          # 518 tests
 ```
+
+The Luau is executed, not just generated. `tests/test_*_luau.py` assembles the
+runtime, runs it under the real `luau` binary, and compares every answer to the
+same expression evaluated in CPython — expectations are computed, never typed,
+so a case cannot encode an expectation that is wrong in the same way the code
+is. Get the toolchain with:
+
+```
+mkdir .tools && cd .tools
+curl -sSL -o luau.zip   https://github.com/luau-lang/luau/releases/latest/download/luau-windows.zip
+unzip luau.zip
+```
+
+Without it those tests skip, and the runtime is then unverified.

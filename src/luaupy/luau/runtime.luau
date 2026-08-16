@@ -439,6 +439,31 @@ function RT.stdout(line: string)
     print(line)
 end
 
+--- Output with no newline appended, for `print(..., end="")`. Roblox's `print`
+--- always adds one, so a partial line is buffered until something terminates
+--- it -- otherwise `print("a", end="")` and `print("b")` land on two lines.
+local partial = ""
+
+function RT.stdout_raw(text: string)
+    partial ..= text
+    local NL = string.char(10)
+    local at = string.find(partial, NL, 1, true)
+    while at ~= nil do
+        print(string.sub(partial, 1, at - 1))
+        partial = string.sub(partial, at + 1)
+        at = string.find(partial, NL, 1, true)
+    end
+end
+
+--- Flush whatever `stdout_raw` still holds, so a program ending mid-line
+--- still shows it.
+function RT.stdout_flush()
+    if partial ~= "" then
+        print(partial)
+        partial = ""
+    end
+end
+
 --- Compiled functions, by the id `func_addr` handed out. `apy_call` reaches a
 --- Python-level call this way: the emitted module registers each function, and
 --- the object model only ever holds the id.

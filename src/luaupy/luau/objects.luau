@@ -1406,15 +1406,34 @@ function RT.apy_getattr(v: number, name: number): number
     if o.k == "inst" then
         local got = o.fields[nm]
         if got ~= nil then return got end
-        local m = H(o.cls).methods[nm]
+        -- Through class_find, so a base class's attributes are reachable.
+        local m = RT.class_find(o.cls, nm)
         if m ~= nil then
-            return new({ k = "bound", fn = m, self_ = v })
+            -- Bind only what is CALLABLE. A class-level constant reached
+            -- through an instance is the value itself, not a method wrapping
+            -- it -- `class C: kind = "point"` then `C().kind` is the string.
+            local mk = kindof(m)
+            if mk == "func" or mk == "bound" then
+                return new({ k = "bound", fn = m, self_ = v })
+            end
+            if mk == "descr" then
+                -- A property reads through its getter on every access.
+                local d = H(m)
+                if d.descr_kind == 0 and d.get ~= 0 then
+                    local argv = RT.alloca(8)
+                    buffer.writeu32(RT.mem(), argv, v)
+                    buffer.writeu32(RT.mem(), argv + 4, 0)
+                    return RT.apy_call(d.get, argv, 0, 1)
+                end
+                return d.get
+            end
+            return m
         end
         return err("AttributeError", "'" .. H(o.cls).name
                    .. "' object has no attribute '" .. nm .. "'")
     end
     if o.k == "type" then
-        local m = o.methods[nm]
+        local m = RT.class_find(v, nm)
         if m ~= nil then return m end
         return err("AttributeError", "type object '" .. o.name
                    .. "' has no attribute '" .. nm .. "'")
