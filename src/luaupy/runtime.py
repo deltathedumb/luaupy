@@ -209,18 +209,82 @@ function RT.shr64(ah, al, sh, sl, signed: boolean): (number, number)
     return h, (bit32.rshift(al, n) + bit32.lshift(ah, 32 - n)) % B32
 end
 
-function RT.div64(ah, al, bh, bl, signed: boolean): (number, number)
+--- Unsigned 64-bit division, quotient and remainder together.
+---
+--- NOT via `to_number`. A double is exact only to 2^53, so converting both
+--- operands and dividing loses bits before the division even starts:
+--- (2^64-1) / 2 came back as a quotient that multiplies back to 0. The first
+--- version of this did exactly that, and a property test comparing q*b + r
+--- against a caught it on 1504 of 3000 random inputs.
+---
+--- The fast path is not an optimisation of the slow one, it is the SAME
+--- arithmetic where a double happens to be exact -- both operands under 2^53,
+--- which every pointer, length and ordinary Python int satisfies. Everything
+--- else takes restoring division, 64 shift-and-subtract steps, which is exact
+--- by construction because it never forms a value wider than the register.
+function RT.divmod64(ah, al, bh, bl): (number, number, number, number)
     if bh == 0 and bl == 0 then RT.trap("integer division by zero") end
-    local a = RT.to_number(ah, al, signed)
-    local b = RT.to_number(bh, bl, signed)
-    return RT.from_number(RT.trunc(a / b))
+
+    -- 2^53 = h * 2^32 + l means h < 2^21.
+    if ah < 2097152 and bh < 2097152 then
+        local a = ah * 4294967296 + al
+        local b = bh * 4294967296 + bl
+        local q = a // b
+        local r = a - q * b
+        local qh, ql = RT.from_number(q)
+        local rh, rl = RT.from_number(r)
+        return qh, ql, rh, rl
+    end
+
+    local qh, ql, rh, rl = 0, 0, 0, 0
+    for i = 63, 0, -1 do
+        -- r <<= 1, then bring down bit i of the dividend. The shift leaves
+        -- rl even, so adding the bit cannot carry.
+        rh, rl = RT.shl64(rh, rl, 0, 1)
+        local b = if i >= 32 then bit32.extract(ah, i - 32, 1)
+                  else bit32.extract(al, i, 1)
+        rl += b
+        if RT.cmp64(rh, rl, bh, bl, ">=", false) then
+            rh, rl = RT.sub64(rh, rl, bh, bl)
+            if i >= 32 then qh += 2 ^ (i - 32) else ql += 2 ^ i end
+        end
+    end
+    return qh, ql, rh, rl
+end
+
+--- Signed division truncates toward zero and the remainder takes the sign of
+--- the DIVIDEND, which is what the IR's `rem` specifies and what C does. Lua's
+--- `%` floors instead, so neither operator here can be used directly.
+local function signed_divmod(ah, al, bh, bl)
+    local neg_q, neg_r = false, false
+    if ah >= 2147483648 then
+        ah, al = RT.neg64(ah, al); neg_q = not neg_q; neg_r = true
+    end
+    if bh >= 2147483648 then
+        bh, bl = RT.neg64(bh, bl); neg_q = not neg_q
+    end
+    local qh, ql, rh, rl = RT.divmod64(ah, al, bh, bl)
+    if neg_q then qh, ql = RT.neg64(qh, ql) end
+    if neg_r then rh, rl = RT.neg64(rh, rl) end
+    return qh, ql, rh, rl
+end
+
+function RT.div64(ah, al, bh, bl, signed: boolean): (number, number)
+    if signed then
+        local qh, ql = signed_divmod(ah, al, bh, bl)
+        return qh, ql
+    end
+    local qh, ql = RT.divmod64(ah, al, bh, bl)
+    return qh, ql
 end
 
 function RT.rem64(ah, al, bh, bl, signed: boolean): (number, number)
-    if bh == 0 and bl == 0 then RT.trap("integer remainder by zero") end
-    local a = RT.to_number(ah, al, signed)
-    local b = RT.to_number(bh, bl, signed)
-    return RT.from_number(a - RT.trunc(a / b) * b)
+    if signed then
+        local _, _, rh, rl = signed_divmod(ah, al, bh, bl)
+        return rh, rl
+    end
+    local _, _, rh, rl = RT.divmod64(ah, al, bh, bl)
+    return rh, rl
 end
 
 --- 64-bit to double. Lossy above 2^53 and unavoidably so -- this is what
