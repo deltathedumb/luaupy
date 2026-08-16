@@ -464,6 +464,65 @@ function RT.stdout_flush()
     end
 end
 
+-- ── the platform floor ──────────────────────────────────────────────────────
+-- Everything a backend must supply that is not IR: a way to emit bytes, a way
+-- to stop, and a way to get memory. Three functions, and asmpython's own
+-- design document names that number -- an object runtime written in IR still
+-- cannot talk to the machine, and this is what it asks through.
+--
+-- NOTHING HERE KNOWS WHAT A PYTHON VALUE IS. `plat_write` takes bytes. The
+-- moment one of these knew what a bool was, every backend would owe the
+-- language rather than the machine, and the floor would stop being three
+-- functions.
+
+--- `plat_write(fd, buf, n)` -> bytes written, or -1.
+---
+--- 1 is stdout and 2 is stderr; nothing else need be supported. Not buffered
+--- on the caller's behalf -- a runtime that wants buffering builds it in the
+--- subset, where every backend gets the same one -- but Roblox's `print`
+--- appends a newline of its own, so a write that does not end in one is held
+--- until something terminates it. Otherwise a runtime emitting a line in
+--- pieces produces one Studio line per piece.
+function RT.plat_write(fh: number, fl: number, buf: number,
+                       nh: number, nl: number): (number, number)
+    local n = RT.to_number(nh, nl, true)
+    if n <= 0 then return RT.from_number(0) end
+    local fd = RT.to_number(fh, fl, true)
+    if fd ~= 1 and fd ~= 2 then return RT.from_number(-1) end
+    RT.stdout_raw(buffer.readstring(mem :: buffer, buf, n))
+    return RT.from_number(n)
+end
+
+--- `plat_exit(code)` -- does not return.
+---
+--- There is no process to end. Flushing first is not tidiness: a program that
+--- exits mid-line would otherwise lose it, and the last line before an exit is
+--- usually the one that says why.
+function RT.plat_exit(h: number, l: number)
+    RT.stdout_flush()
+    local code = RT.to_number(h, l, true)
+    if code == 0 then
+        error("__asmpython_exit_0", 0)
+    end
+    error("asmpython: exited with status " .. code, 0)
+end
+
+--- `plat_heap(n)` -> n more bytes, or null.
+---
+--- Bump allocation out of the same buffer `alloca` uses, so an IR-written
+--- runtime and the emitted code share one address space and a pointer means
+--- the same thing to both. Null on exhaustion rather than a trap, because the
+--- caller is an allocator and gets to decide what running out means.
+function RT.plat_heap(h: number, l: number): number
+    local n = RT.to_number(h, l, true)
+    if n <= 0 then return 0 end
+    local addr = brk
+    local next_brk = (brk + n + 7) // 8 * 8
+    if next_brk > limit then return 0 end
+    brk = next_brk
+    return addr
+end
+
 --- Compiled functions, by the id `func_addr` handed out. `apy_call` reaches a
 --- Python-level call this way: the emitted module registers each function, and
 --- the object model only ever holds the id.

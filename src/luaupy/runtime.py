@@ -89,6 +89,27 @@ def runtime_luau() -> str:
     return shell.replace(_OBJECTS_MARKER, body)
 
 
+@lru_cache(maxsize=1)
+def defined_symbols() -> frozenset[str]:
+    """Every `apy_*` the Luau runtime defines.
+
+    READ OUT OF THE .luau SOURCES rather than listed beside them. This set is
+    what `Backend.object_runtime` hands to the compiler to say "do not splice
+    the IR version of these", so a hand-kept copy that fell behind would let
+    asmpython supply an IR implementation of a function this runtime also
+    defines -- and the two do not agree about what a value IS. The IR runtime
+    represents one as a heap pointer with a kind tag at offset 0; this one
+    represents it as a handle into a Luau table. Mixing them hands a pointer to
+    something that indexes a table, and the failure is an index of nil far from
+    the call that produced it.
+    """
+    import re
+    found: set[str] = set()
+    for name in _MODULES:
+        found |= set(re.findall(r"function RT\.(apy_\w+)", _read(name)))
+    return frozenset(found)
+
+
 def sources() -> dict[str, str]:
     """Every .luau file, by name. For tests that check them individually."""
     return {p.name: p.read_text(encoding="utf-8")

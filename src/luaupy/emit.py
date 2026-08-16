@@ -92,6 +92,27 @@ class LuauBackend(Backend):
                metavar="LAYOUT"),
     )
 
+    #: THE OBJECT RUNTIME IS THIS BACKEND'S, not the IR splice's.
+    #:
+    #: asmpython writes part of the object runtime in its own machine subset
+    #: and compiles it into every program that needs it, which is how a backend
+    #: stops owing 229 functions. This backend opts out of the whole of it,
+    #: because on Luau the IR version is strictly worse: it bump-allocates a
+    #: 152-byte object in a `buffer`, writes a kind tag and payload with byte
+    #: pokes, and never frees -- manual memory management layered over a
+    #: language that already has a garbage collector. `{k = "int", n = 42}` is
+    #: a native table Luau collects on its own.
+    #:
+    #: Opting out is also not optional here while both exist. The two
+    #: representations disagree about what a value IS -- a heap pointer against
+    #: a handle into a Luau table -- so a program that got `apy_from_int` from
+    #: the splice and `apy_print` from here hands a pointer to something that
+    #: indexes a table.
+    #:
+    #: Derived from the .luau sources, so it names exactly what is really
+    #: defined and cannot fall behind them.
+    object_runtime = runtime.defined_symbols()
+
     #: WHAT THIS BACKEND MAKES IMPORTABLE.
     #:
     #: `from luau import l_exec` is the escape hatch to the host language, and
