@@ -266,13 +266,21 @@ end
 local function make_int(sign: number, limbs): number
     limbs = big_norm(limbs)
     if big_is_zero(limbs) then sign = 0 end
-    if #limbs <= 3 then
+    -- Decided from the LIMBS, before assembling, because assembling is what
+    -- rounds. Reassembling first and then testing the result was wrong at
+    -- exactly one value and it is the one that matters: 2^53 + 1 is computed
+    -- correctly in limbs, then `x * LIMB + limbs[1]` rounds it back down to
+    -- 2^53, and the range test receives a number that is already wrong and
+    -- accepts it. `2**53 + 1 == 2**53` was True.
+    --
+    -- Two limbs reach 2^48 - 1; three with a top limb under 32 stay strictly
+    -- below 32 * 2^48 = 2^53, where every integer is still representable. A
+    -- value at or above that stays in limbs, which costs nothing: comparison
+    -- and printing both handle either form.
+    if #limbs <= 2 or (#limbs == 3 and limbs[3] < 32) then
         local x = 0
         for i = #limbs, 1, -1 do x = x * LIMB + limbs[i] end
-        if x <= 9007199254740992 then
-            local n = if sign < 0 then -x else x
-            return RT.box_int(n)
-        end
+        return RT.box_int(if sign < 0 then -x else x)
     end
     return new({ k = "big", sign = if sign == 0 then 1 else sign, limbs = limbs })
 end
@@ -467,7 +475,14 @@ local function float_repr(x: number): string
                 -- Python writes e+16, not e+016.
                 local m, sign, e = string.match(s, "^(.-)e([+-])0*(%d+)$")
                 if m then
-                    if not string.find(m, "%.") then m ..= ".0" end
+                    -- No forced `.0` on the mantissa: Python writes 1e+22, not
+                    -- 1.0e+22. The trailing zero only appears in the
+                    -- non-exponent form, where it is what distinguishes a
+                    -- float from an int.
+                    if string.find(m, "%.") then
+                        m = string.gsub(m, "0+$", "")
+                        m = string.gsub(m, "%.$", "")
+                    end
                     return m .. "e" .. sign .. (if #e < 2 then "0" .. e else e)
                 end
                 return s
@@ -651,6 +666,21 @@ end
 -- ── arithmetic ──────────────────────────────────────────────────────────────
 
 local SAFE = 94906265        -- floor(sqrt(2^53)); products below this are exact
+local HALF = 4503599627370496   -- 2^52
+
+--- Is `x + y` exact in a double?
+---
+--- Asked of the OPERANDS, and that is the whole point. Checking the sum
+--- instead is what `int_result` used to do, and it is wrong in the one case
+--- that matters: 2^53 + 1 rounds to 2^53 during the addition, so the check
+--- receives a value that is already wrong, finds it inside the exact range,
+--- and returns it. `2**53 + 1 == 2**53` was True.
+---
+--- Below 2^52 each, the sum cannot exceed 2^53, where every integer is still
+--- representable. Anything larger goes through limbs.
+local function exact_sum(x: number, y: number): boolean
+    return x >= -HALF and x <= HALF and y >= -HALF and y <= HALF
+end
 
 function RT.apy_add(a: number, b: number): number
     local ka, kb = kindof(a), kindof(b)
@@ -673,7 +703,8 @@ function RT.apy_add(a: number, b: number): number
     end
     if either_float(a, b) then return RT.box_float(num_of(a) + num_of(b)) end
     if either_big(a, b) then return big_add(a, b, false) end
-    return int_result(H(a).n + H(b).n)
+    if exact_sum(H(a).n, H(b).n) then return RT.box_int(H(a).n + H(b).n) end
+    return big_add(a, b, false)
 end
 
 function RT.apy_iadd(a: number, b: number): number
@@ -694,7 +725,8 @@ function RT.apy_sub(a: number, b: number): number
     end
     if either_float(a, b) then return RT.box_float(num_of(a) - num_of(b)) end
     if either_big(a, b) then return big_add(a, b, true) end
-    return int_result(H(a).n - H(b).n)
+    if exact_sum(H(a).n, H(b).n) then return RT.box_int(H(a).n - H(b).n) end
+    return big_add(a, b, true)
 end
 
 function RT.apy_mul(a: number, b: number): number
