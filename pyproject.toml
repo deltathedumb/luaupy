@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "luaupy"
+version = "0.1.0"
+description = "An asmpython backend that emits Luau source for Roblox"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Mabel" }]
+dependencies = []
+
+[project.optional-dependencies]
+# asmpython is needed at IMPORT time -- the backend subclasses `Backend` -- and
+# not merely to build. It is an extra rather than a hard dependency because a
+# PEP 508 direct reference cannot be published in `dependencies`, and because
+# the usual development setup installs the compiler from a local checkout,
+# which a pinned requirement here would fetch straight over the top of.
+compiler = ["asmpython"]
+test = ["pytest>=8"]
+
+# THE reachability hook, and the whole reason no edit to asmpython is needed.
+#
+# `asmpython.plugins.load_all()` reads this entry-point group, splits any
+# ":attr" off the value and imports what remains, then looks for
+# `__asmpython_plugin__` in the module. So the KEY is decorative and the VALUE
+# must be exactly the importable module name.
+#
+# Keep the distribution name, the module name and `Plugin.name` all "luaupy":
+# the loader's duplicate guard is keyed on the NAME STRING, not the module
+# object, so a package reachable under two spellings registers twice and the
+# second `register()` raises -- which surfaces on every asmpython command, not
+# just ours.
+[project.entry-points."asmpython.plugins"]
+luaupy = "luaupy"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
