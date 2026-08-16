@@ -143,3 +143,86 @@ function RT.luau_l_exec(src: number): number
     end
     return RT.from_luau(result)
 end
+
+-- ── reaching Roblox without loadstring ──────────────────────────────────────
+--
+-- `l_exec` needs `loadstring`, and in a RUNNING Roblox game that is server-only
+-- and gated on a setting that is off by default and, since 0.734, not even a
+-- scriptable property -- it lives in Game Settings and nothing can turn it on
+-- from code. So `l_exec` works in Studio's command bar, in a plugin, and under
+-- the open-source luau binary, and raises everywhere else.
+--
+-- Which is fine, because evaluating an expression was never what reaching
+-- Roblox required. A NAME LOOKUP is enough, and that needs no compiler:
+--
+--     from luau import l_get, l_new
+--     workspace = l_get("workspace")
+--     part = l_new("Part")
+--     part.Parent = workspace
+--
+-- Everything else follows from the wrapper. `l_get("game")` answers something
+-- whose `:GetService("Players")` works, whose `.Workspace` works, and whose
+-- members resolve by name -- so the whole API is reachable from two functions
+-- that are legal in any context.
+
+--- The globals a place script actually names. Anything missing falls through
+--- to GetService, so this is a shortcut rather than a whitelist.
+local GLOBALS: { [string]: any } = {
+    game = game, workspace = workspace, script = script,
+    Instance = Instance, Enum = Enum, task = task, os = os,
+    Vector3 = Vector3, Vector2 = Vector2, CFrame = CFrame,
+    Color3 = Color3, UDim = UDim, UDim2 = UDim2, Ray = Ray,
+    BrickColor = BrickColor, Random = Random, Region3 = Region3,
+    TweenInfo = TweenInfo, NumberRange = NumberRange,
+    ColorSequence = ColorSequence, NumberSequence = NumberSequence,
+    math = math, string = string, table = table, buffer = buffer,
+    bit32 = bit32, coroutine = coroutine, utf8 = utf8,
+    tostring = tostring, tonumber = tonumber, typeof = typeof,
+    print = print, warn = warn, pcall = pcall, select = select,
+}
+
+--- `l_get(name)` -- a Luau global or a service, wrapped.
+---
+--- Reads the real global environment rather than a table of blessed names, so
+--- `game`, `workspace`, `Instance`, `Enum`, `task`, `os`, and anything Roblox
+--- adds later are all reachable without this file changing.
+function RT.luau_l_get(name: number): number
+    if RT.kindof(name) ~= "str" then
+        return RT.err("TypeError", "l_get() argument must be a string")
+    end
+    local key = RT.as_str(name)
+    -- Named explicitly rather than read out of getfenv, which Luau deprecates
+    -- and which reads a global table Roblox does not promise to keep readable.
+    -- The fallback covers everything not listed: a service is reachable by
+    -- name through GetService whether or not it appears here, so a Roblox
+    -- addition needs no change to this file.
+    local value = GLOBALS[key]
+    if value == nil then
+        local ok, service = pcall(function() return game:GetService(key) end)
+        if ok then value = service end
+    end
+    if value == nil then
+        return RT.err("NameError", "no Luau global or service named '" .. key .. "'")
+    end
+    return RT.from_luau(value)
+end
+
+--- `l_new(className)` -- Instance.new, wrapped.
+---
+--- Its own function rather than `l_get("Instance").new(...)` because creating
+--- an instance is the single most common thing a place script does, and the
+--- error for a bad class name is worth reporting here where the name is known.
+function RT.luau_l_new(class_name: number): number
+    if RT.kindof(class_name) ~= "str" then
+        return RT.err("TypeError", "l_new() argument must be a string")
+    end
+    local name = RT.as_str(class_name)
+    local ok, made = pcall(function()
+        return Instance.new(name)
+    end)
+    if not ok then
+        return RT.err("ValueError",
+                      "cannot create a '" .. name .. "': " .. tostring(made))
+    end
+    return RT.from_luau(made)
+end

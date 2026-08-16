@@ -46,6 +46,8 @@ from asmpython.plugins import CompilerPatch
 #: above.
 RUNTIME_SYMBOLS: dict[str, tuple[list[T.Type], T.Type]] = {
     "luau_l_exec": ([T.PTR], T.PTR),
+    "luau_l_get": ([T.PTR], T.PTR),
+    "luau_l_new": ([T.PTR], T.PTR),
 }
 
 

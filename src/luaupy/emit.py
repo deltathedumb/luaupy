@@ -132,6 +132,12 @@ class LuauBackend(Backend):
     #: the bare name is free -- the collision rule `Backend.modules` documents.
     modules = {
         "luau": {
+            # `l_get` and `l_new` are the ones that work everywhere. `l_exec`
+            # needs loadstring, which a running Roblox game does not provide
+            # and cannot be made to provide from code, so it is for Studio's
+            # command bar, plugins and the open-source luau binary.
+            "l_get": ("call", "luau_l_get", 1),
+            "l_new": ("call", "luau_l_new", 1),
             "l_exec": ("call", "luau_l_exec", 1),
         },
     }

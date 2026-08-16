@@ -110,6 +110,68 @@ def defined_symbols() -> frozenset[str]:
     return frozenset(found)
 
 
+#: Roblox refuses a `Source` of 200,000 characters or more, and the assembled
+#: runtime passed it. Kept a little under, so a part that grows by a few lines
+#: does not fail a build with a limit nobody was watching.
+SOURCE_LIMIT = 190_000
+
+
+def split_modules() -> dict[str, str]:
+    """The runtime as several ModuleScripts, none near Studio's size limit.
+
+    ONE STRING DOES NOT FIT. `Script.Source` is capped at 200,000 characters
+    and the assembled runtime is past it, so the single-file form works under
+    the `luau` binary and fails in Studio with a message about string length
+    that says nothing about runtimes.
+
+    The split needs no change to the `.luau` sources because they already
+    communicate ONLY through `RT` -- every module's own locals are private to
+    it, and anything shared is published as a field. So each becomes
+
+        return function(RT) ... end
+
+    and a root module makes the table, applies each part in order, and returns
+    it. That is also the arrangement that stops mattering as the runtime grows:
+    a new module is a new ModuleScript rather than a step closer to the cap.
+    """
+    shell = _read("runtime.luau")
+    # The machine layer owns `local RT = {}` and the trailing `return RT`; the
+    # root module below takes both over, so they are stripped here.
+    head, _, rest = shell.partition("local RT = {}")
+    machine, _, tail = rest.partition(_OBJECTS_MARKER)
+    epilogue = tail.split("return RT")[0]
+
+    out: dict[str, str] = {
+        "machine": f"--!native\n--!optimize 2\nreturn function(RT)\n{machine}\nend\n",
+    }
+    for name in _MODULES:
+        part = name.removesuffix(".luau")
+        out[part] = (f"--!native\n--!optimize 2\nreturn function(RT)\n"
+                     f"{_read(name)}\nend\n")
+
+    order = ["machine", *(n.removesuffix('.luau') for n in _MODULES)]
+    requires = "\n".join(
+        f'    require(script:WaitForChild("{part}"))(RT)' for part in order)
+    out["init"] = (
+        "--!native\n--!optimize 2\n"
+        "-- luaupy runtime. Assembled from parts because Studio caps a\n"
+        "-- Script's Source at 200,000 characters and the whole runtime is\n"
+        "-- past it. Each part is a function of RT; the order matters only\n"
+        "-- because a part may CALL an earlier one at load time.\n"
+        "local RT = {}\n"
+        f"do\n{requires}\nend\n"
+        f"{epilogue}"
+        "return RT\n"
+    )
+
+    for part, text in out.items():
+        if len(text) >= SOURCE_LIMIT:
+            raise AssertionError(
+                f"runtime part '{part}' is {len(text)} characters, at or past "
+                f"the {SOURCE_LIMIT} a Studio Source will take; split it")
+    return out
+
+
 def sources() -> dict[str, str]:
     """Every .luau file, by name. For tests that check them individually."""
     return {p.name: p.read_text(encoding="utf-8")
