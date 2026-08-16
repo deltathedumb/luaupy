@@ -37,6 +37,20 @@ _LUAU = Path(__file__).parent / "luau"
 #: The marker `runtime.luau` carries where the object model belongs.
 _OBJECTS_MARKER = "@OBJECTS@"
 
+#: The object model, in load order. Split by area rather than kept in one file
+#: because `objects.luau` alone is already fourteen hundred lines, and because
+#: a group is the unit that gets written, tested against CPython, and argued
+#: about.
+#:
+#: ORDER MATTERS ONLY FOR LOCALS. Every module defines `function RT.apy_*`,
+#: which is late-bound, so a later module may call an earlier one's ABI freely.
+#: What it may NOT do is reach a `local` from another file -- those are per
+#: chunk, and the shared ones are published on RT by `objects.luau`.
+_MODULES = (
+    "objects.luau",     # the foundation: handles, errors, numbers, containers
+    "strings.luau",     # str methods
+)
+
 
 def _read(name: str) -> str:
     path = _LUAU / name
@@ -64,7 +78,8 @@ def runtime_luau() -> str:
             f"model has nowhere to go and every apy_* would fall through to "
             f"the not-implemented metatable"
         )
-    return shell.replace(_OBJECTS_MARKER, _read("objects.luau"))
+    body = "\n".join(_read(name) for name in _MODULES)
+    return shell.replace(_OBJECTS_MARKER, body)
 
 
 def sources() -> dict[str, str]:
