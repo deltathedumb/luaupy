@@ -55,6 +55,7 @@ _MODULES = (
     "classes.luau",     # classes, descriptors, dict views, match, misc helpers
     "typing.luau",      # the inert typing surface, and import
     "async.luau",       # generators, coroutines, asyncio, inspect
+    "interop.luau",     # `from luau import l_exec`, and the value bridge
 )
 
 

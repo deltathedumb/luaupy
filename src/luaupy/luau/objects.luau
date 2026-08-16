@@ -509,6 +509,7 @@ local TYPE_NAME = {
     exc = "Exception", type = "type", iter = "iterator", view = "dict_view",
     range = "range", cell = "cell", func = "function", bound = "method",
     slice = "slice", stopiter = "StopIteration",
+    luau = "LuauObject", luau_method = "LuauMethod",
     notimplemented = "NotImplementedType",
 }
 
@@ -1403,6 +1404,24 @@ end
 function RT.apy_getattr(v: number, name: number): number
     local o = H(v)
     local nm = H(name).s
+    if o.k == "luau" then
+        -- Forwarded straight to Luau, which is what makes the whole Roblox API
+        -- reachable by name without declaring any of it. Indexing an Instance
+        -- already resolves properties, methods AND children, so this one line
+        -- covers all three.
+        local ok, got = pcall(function() return o.raw[nm] end)
+        if not ok then
+            return err("AttributeError", tostring(got))
+        end
+        if type(got) == "function" then
+            -- Roblox methods are colon-calls. The receiver has to be kept and
+            -- re-inserted, or `game.GetService("Players")` passes the string
+            -- as `self` and fails somewhere unhelpful.
+            local made = new({ k = "luau_method", raw = got, recv = o.raw })
+            return made
+        end
+        return RT.from_luau(got)
+    end
     if o.k == "inst" then
         local got = o.fields[nm]
         if got ~= nil then return got end
@@ -1449,6 +1468,11 @@ end
 
 function RT.apy_setattr(v: number, name: number, val: number): number
     local o = H(v)
+    if o.k == "luau" then
+        local ok, why = pcall(function() o.raw[H(name).s] = RT.to_luau(val) end)
+        if not ok then return err("AttributeError", tostring(why)) end
+        return NONE
+    end
     if o.k == "inst" then
         o.fields[H(name).s] = val
         return NONE
@@ -1597,11 +1621,35 @@ function RT.apy_call(f: number, argv: number, h: number, l: number): number
         table.insert(args, buffer.readu32(b, argv + i * 8))
     end
     local o = H(f)
+    if o.k == "luau" or o.k == "luau_method" then
+        local raw = {}
+        for i, handle in ipairs(args) do raw[i] = RT.to_luau(handle) end
+        local ok, result
+        if o.k == "luau_method" then
+            -- The receiver first: a Roblox method reached through an instance
+            -- is a colon-call.
+            ok, result = pcall(o.raw, o.recv, table.unpack(raw))
+        else
+            ok, result = pcall(o.raw, table.unpack(raw))
+        end
+        if not ok then return err("RuntimeError", tostring(result)) end
+        return RT.from_luau(result)
+    end
     if o.k == "func" then
+        -- THE FUNCTION OBJECT GOES FIRST. A compiled Python function is
+        -- lowered as `f(self_func, ...args)` so its body can reach its own
+        -- cells, defaults and annotations, which live on the object rather
+        -- than in the frame. Passing only the user arguments shifts every one
+        -- of them left: the first argument lands in the closure slot and the
+        -- last parameter is nil, which surfaces far away as an operation on a
+        -- handle of 0.
+        table.insert(args, 1, f)
         return RT.invoke(o.fnid, args)
     end
     if o.k == "bound" then
+        -- Same shape, with the Python-level receiver after it.
         table.insert(args, 1, o.self_)
+        table.insert(args, 1, o.fn)
         return RT.invoke(H(o.fn).fnid, args)
     end
     if o.k == "type" then

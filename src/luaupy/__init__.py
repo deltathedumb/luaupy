@@ -22,9 +22,9 @@ from __future__ import annotations
 
 from asmpython.plugins import Plugin
 
-from . import emit, structure, target, values
+from . import emit, patches, structure, target, values
 
-__all__ = ["emit", "structure", "target", "values", "plugin"]
+__all__ = ["emit", "patches", "structure", "target", "values", "plugin"]
 __version__ = "0.1.0"
 
 #: What this package contributes. DECLARED, not done: building this object
@@ -40,6 +40,11 @@ plugin = Plugin(
 # both -- a listing that resolved the default would otherwise fail.
 plugin.add_target(target.ROBLOX, aliases=target.ALIASES)
 plugin.backends.append(emit.LuauBackend())
+# `Backend.modules` says `from luau import l_exec` RESOLVES; it cannot
+# introduce the symbol behind it, which the frontend declares from fixed
+# tables. See patches.py -- without this the call reaches the verifier as
+# "call to unknown function", reported as a compiler bug.
+plugin.patches.extend(patches.PATCHES)
 
 #: The name `plugins.load()` looks for. A module without one is assumed to have
 #: registered itself at import time, which still works and is the older way.

@@ -92,6 +92,29 @@ class LuauBackend(Backend):
                metavar="LAYOUT"),
     )
 
+    #: WHAT THIS BACKEND MAKES IMPORTABLE.
+    #:
+    #: `from luau import l_exec` is the escape hatch to the host language, and
+    #: it is the only way compiled Python reaches a Roblox API. The object
+    #: model knows int, str, list and the rest; it knows nothing about `game`,
+    #: `Instance` or the several thousand members Roblox adds and changes
+    #: without notice. Declaring them all would be a binding generator that is
+    #: out of date the week it ships, so one function crosses the boundary and
+    #: what comes back forwards attribute access, assignment and calls:
+    #:
+    #:     from luau import l_exec
+    #:     part = l_exec("return Instance.new('Part')")
+    #:     part.Anchored = True
+    #:     part.Parent = l_exec("return workspace")
+    #:
+    #: Reached as `import luau.l_exec` too, which always works whether or not
+    #: the bare name is free -- the collision rule `Backend.modules` documents.
+    modules = {
+        "luau": {
+            "l_exec": ("call", "luau_l_exec", 1),
+        },
+    }
+
     def __init__(self, *, heap: int = 16 << 20, layout: str = "rojo") -> None:
         self.heap = heap
         self.layout = layout
