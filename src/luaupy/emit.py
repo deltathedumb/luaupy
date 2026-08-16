@@ -121,7 +121,7 @@ class LuauBackend(Backend):
     # ── the entry point ─────────────────────────────────────────────────────
     def emit(self, module: Module, target: Target) -> dict[str, bytes]:
         body = _Emitter(module, self.heap).run()
-        rt = runtime.RUNTIME_LUAU
+        rt = runtime.runtime_luau()
 
         if self.layout == "flat":
             # One file, for pasting straight into a Script. The runtime is

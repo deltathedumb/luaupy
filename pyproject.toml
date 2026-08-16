@@ -39,6 +39,12 @@ luaupy = "luaupy"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# The .luau sources ARE the runtime. A wheel built without them installs a
+# backend that emits a program with no runtime beside it, and the failure
+# arrives at `require(script.Parent.runtime)` in Roblox rather than at build.
+[tool.setuptools.package-data]
+luaupy = ["luau/*.luau"]
+
 [tool.ruff]
 line-length = 88
 target-version = "py311"
