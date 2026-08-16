@@ -374,10 +374,9 @@ class _Emitter:
 
             case Switch(value=v, cases=cases, default=default):
                 assert self.fn is not None
-                expr = _scalar(v, self.fn)
                 keyword = "if"
                 for value, arm in cases:
-                    self.line(f"{keyword} {expr} == {value} then")
+                    self.line(f"{keyword} {self._case_test(v, value)} then")
                     self.depth += 1
                     self._node(arm)
                     self.depth -= 1
@@ -662,7 +661,13 @@ class _Emitter:
                 # the opposite of the order the call takes.
                 self.line(f"RT.{_mem('write', ty)}(MEM, {a(1)}, {arg(0)})")
             case Op.OFFSET:
-                self.line(f"{dst()} = {a(0)} + {a(1)}")
+                # The offset is "an integer" -- any width, either signedness --
+                # while the pointer is always one local holding a buffer index.
+                # Both of the other readings are wrong: a 64-bit offset has two
+                # locals and cannot be named as one, and a narrow SIGNED offset
+                # is stored as a raw bit pattern, so `p + r1` with r1 = -1:i32
+                # would add 4294967295 rather than step back a byte.
+                self.line(f"{dst()} = {a(0)} + {self._as_index(ins.args[1])}")
 
             # ── calls ───────────────────────────────────────────────────────
             case Op.CALL:
@@ -675,6 +680,38 @@ class _Emitter:
                 # produce a program wrong in a way no test names.
                 raise NotImplementedError(
                     f"luau backend has no rule for {ins.op.value!r}")
+
+    def _case_test(self, reg: int, value: int) -> str:
+        """One arm of a `switch` ladder.
+
+        Two things the obvious `r0 == 3` gets wrong. A 64-bit scrutinee has two
+        locals and must be compared a half at a time. And case values arrive as
+        signed Python ints while registers hold raw bit patterns, so a `case -1`
+        on an i32 has to be matched against 4294967295 or it never fires.
+        """
+        assert self.fn is not None
+        ty = self.fn.register_type(reg)
+        if V.is_wide(ty):
+            n = value % (1 << 64)
+            return (f"{V.hi(reg)} == {n >> 32} and "
+                    f"{V.lo(reg)} == {n & 0xFFFFFFFF}")
+        return f"{V.name(reg, ty)} == {value % V.mask(ty)}"
+
+    def _as_index(self, reg: int) -> str:
+        """An integer register as a plain Luau number, sign applied.
+
+        Used where a value is an amount rather than a bit pattern -- pointer
+        arithmetic being the only such place in the opcode set. Everywhere else
+        integers stay raw, which is what makes one rule per opcode possible.
+        """
+        assert self.fn is not None
+        ty = self.fn.register_type(reg)
+        if V.is_wide(ty):
+            return (f"RT.to_number({V.hi(reg)}, {V.lo(reg)}, "
+                    f"{str(ty.is_signed).lower()})")
+        if ty.is_int and ty.is_signed and ty.bits > 1:
+            return f"RT.sext({V.name(reg, ty)}, {ty.bits})"
+        return V.name(reg, ty)
 
     def _bitcast(self, ins: Instruction) -> None:
         assert self.fn is not None

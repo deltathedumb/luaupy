@@ -296,8 +296,21 @@ function RT.to_number(h: number, l: number, signed: boolean?): number
     return h * B32 + l
 end
 
+--- Double to 64-bit halves.
+---
+--- A negative value is split by magnitude and then negated in INTEGER
+--- arithmetic. The obvious `n += 2^64` is wrong: it lands the value above
+--- 2^53, where a double no longer represents consecutive integers, so the low
+--- bits are gone before the split even happens. `widen(-1705032704)` came back
+--- 1024 short that way -- the high half right, the low half quietly rounded.
+---
+--- Above 2^53 the input has already lost precision and nothing here can
+--- recover it; that loss belongs to whoever produced the double.
 function RT.from_number(n: number): (number, number)
-    if n < 0 then n += 18446744073709551616 end
+    if n < 0 then
+        local h, l = RT.from_number(-n)
+        return RT.neg64(h, l)
+    end
     return (n // B32) % B32, n % B32
 end
 
