@@ -258,6 +258,65 @@ local function big_is_zero(a): boolean
     return #a == 1 and a[1] == 0
 end
 
+local function big_bitlen(a): number
+    local top = a[#a]
+    if #a == 1 and top == 0 then return 0 end
+    local bits = (#a - 1) * 24
+    while top > 0 do
+        bits += 1
+        top = math.floor(top / 2)
+    end
+    return bits
+end
+
+local function big_bit(a, i: number): number
+    local limb = a[math.floor(i / 24) + 1]
+    if limb == nil then return 0 end
+    return math.floor(limb / 2 ^ (i % 24)) % 2
+end
+
+--- a = a*2 + bit, in place.
+local function big_shl1(a, bit: number)
+    local carry = bit
+    for i = 1, #a do
+        local v = a[i] * 2 + carry
+        a[i] = v % LIMB
+        carry = (v - a[i]) / LIMB
+    end
+    if carry > 0 then table.insert(a, carry) end
+    return a
+end
+
+--- |a| divided by |b|: truncated quotient and remainder, both exact.
+---
+--- Binary long division rather than Knuth's algorithm D. It is slower per bit
+--- and it is a dozen lines instead of eighty, and -- the reason that matters
+--- here -- it never forms an intermediate wider than the remainder, so there
+--- is nowhere for a double to round. `apy_mod` used to convert both operands
+--- with `apy_as_float` and pow(7, 128, 1000000007) came back wrong, because
+--- squaring a nine-digit modulus lands near 10^18 and 2^53 is 9.0e15.
+local function big_divmod_abs(a, b)
+    if big_is_zero(b) then return { 0 }, { 0 } end
+    if big_cmp_abs(a, b) < 0 then
+        local r = {}
+        for i, v in ipairs(a) do r[i] = v end
+        return { 0 }, r
+    end
+    local n = big_bitlen(a)
+    local q = {}
+    for i = 1, math.floor((n - 1) / 24) + 1 do q[i] = 0 end
+    local r = { 0 }
+    for i = n - 1, 0, -1 do
+        big_shl1(r, big_bit(a, i))
+        if big_cmp_abs(r, b) >= 0 then
+            r = big_sub_abs(r, b)
+            local li = math.floor(i / 24) + 1
+            q[li] += 2 ^ (i % 24)
+        end
+    end
+    return big_norm(q), big_norm(r)
+end
+
 --- A big value, demoted to kind `int` when it fits exactly.
 ---
 --- Demotion is required, not tidiness: the C says a zero-valued big becomes the
@@ -434,6 +493,7 @@ function RT.apy_truth(v: number): (number, number)
     elseif k == "list" or k == "tuple" or k == "set" or k == "frozenset" then
         t = #o.items > 0
     elseif k == "dict" then t = #o.keys > 0
+    elseif k == "range" then t = RT.range_len(o) > 0
     elseif k == "exc" then t = true
     else t = true
     end
@@ -447,6 +507,8 @@ local TYPE_NAME = {
     float = "float", str = "str", bytes = "bytes", list = "list",
     tuple = "tuple", dict = "dict", set = "set", frozenset = "frozenset",
     exc = "Exception", type = "type", iter = "iterator", view = "dict_view",
+    range = "range", cell = "cell", func = "function", bound = "method",
+    slice = "slice", stopiter = "StopIteration",
     notimplemented = "NotImplementedType",
 }
 
@@ -562,6 +624,14 @@ local function to_text(v: number, want_repr: boolean): string
         return o.msg or ""
     end
     if k == "type" then return "<class '" .. o.name .. "'>" end
+    if k == "range" then
+        -- repr(range(0, 5)) keeps both bounds and shows the step only when it
+        -- is not 1, which is what CPython prints.
+        if o.step == 1 then
+            return "range(" .. o.start .. ", " .. o.stop .. ")"
+        end
+        return "range(" .. o.start .. ", " .. o.stop .. ", " .. o.step .. ")"
+    end
     if k == "inst" then
         return "<" .. H(o.cls).name .. " object>"
     end
@@ -636,18 +706,6 @@ end
 
 local function either_big(a: number, b: number): boolean
     return H(a).k == "big" or H(b).k == "big"
-end
-
---- An integer result that may have left the exact range.
----
---- The check is not `> 2^53` on the result: by then the addition has already
---- rounded. Operands are checked first, and anything near the boundary is
---- redone in limbs.
-local function int_result(x: number): number
-    if x <= 9007199254740992 and x >= -9007199254740992 then
-        return RT.box_int(x)
-    end
-    return make_int(if x < 0 then -1 else 1, big_from_abs(math.abs(x)))
 end
 
 local function big_add(a: number, b: number, negate_b: boolean): number
@@ -780,19 +838,42 @@ function RT.apy_truediv(a: number, b: number): number
     return RT.box_float(num_of(a) / y)
 end
 
+--- Floor division and floored modulo on integers of any size.
+---
+--- Python defines a = b*q + r with q = floor(a/b) and r taking the DIVISOR's
+--- sign. Long division gives the truncated pair, so a mixed-sign result is
+--- corrected by one: q goes down by one and r moves by b. Skipping that
+--- correction is what makes -7//2 come out -3 instead of -4.
+local function int_divmod(a: number, b: number): (number?, number?)
+    local sa, la = as_big(a)
+    local sb, lb = as_big(b)
+    local qa, ra = big_divmod_abs(la, lb)
+    local qs = sa * sb
+    if not big_is_zero(ra) and qs < 0 then
+        qa = big_add_abs(qa, { 1 })
+        ra = big_sub_abs(lb, ra)
+        return make_int(-1, qa), make_int(sb, ra)
+    end
+    return make_int(qs, qa), make_int(sa, ra)
+end
+
 function RT.apy_floordiv(a: number, b: number): number
     if not (is_num(kindof(a)) and is_num(kindof(b))) then
         return err("TypeError", "unsupported operand type(s) for //")
     end
-    local x, y = num_of(a), num_of(b)
-    if y == 0 then
+    if either_float(a, b) then
+        local y = num_of(b)
+        if y == 0 then
+            return err("ZeroDivisionError", "float floor division by zero")
+        end
+        return RT.box_float(math.floor(num_of(a) / y))
+    end
+    local _, zt = RT.apy_truth(b)
+    if zt == 0 then
         return err("ZeroDivisionError", "integer division or modulo by zero")
     end
-    -- Python floors; Luau's // also floors, so this one agrees. C truncates,
-    -- which is why the C's implementation has a correction and this does not.
-    local q = math.floor(x / y)
-    if either_float(a, b) then return RT.box_float(q) end
-    return int_result(q)
+    local q = int_divmod(a, b)
+    return q :: number
 end
 
 function RT.apy_mod(a: number, b: number): number
@@ -803,15 +884,21 @@ function RT.apy_mod(a: number, b: number): number
     if not (is_num(ka) and is_num(kindof(b))) then
         return err("TypeError", "unsupported operand type(s) for %")
     end
-    local x, y = num_of(a), num_of(b)
-    if y == 0 then
+    if either_float(a, b) then
+        local y = num_of(b)
+        if y == 0 then
+            return err("ZeroDivisionError", "float modulo by zero")
+        end
+        -- Luau's % is floored and so is Python's, so a float remainder agrees
+        -- directly. C's fmod truncates and would differ for mixed signs.
+        return RT.box_float(num_of(a) % y)
+    end
+    local _, zt = RT.apy_truth(b)
+    if zt == 0 then
         return err("ZeroDivisionError", "integer division or modulo by zero")
     end
-    -- Luau's % is floored, and so is Python's, so the sign follows the divisor
-    -- in both. C's fmod truncates and would differ for mixed signs.
-    local r = x % y
-    if either_float(a, b) then return RT.box_float(r) end
-    return int_result(r)
+    local _, r = int_divmod(a, b)
+    return r :: number
 end
 
 function RT.apy_pow(a: number, b: number): number
@@ -963,7 +1050,10 @@ local function eq(a: number, b: number): boolean
         for _, e in ipairs(oa.items) do
             local found = false
             for _, f in ipairs(ob.items) do
-                if eq(e, f) then found = true break end
+                if eq(e, f) then
+                    found = true
+                    break
+                end
             end
             if not found then return false end
         end
@@ -1148,6 +1238,7 @@ function RT.apy_len(v: number): number
     local k = o.k
     if k == "str" or k == "bytes" then return RT.box_int(#o.s) end
     if k == "dict" then return RT.box_int(#o.keys) end
+    if k == "range" then return RT.box_int(RT.range_len(o)) end
     if o.items ~= nil then return RT.box_int(#o.items) end
     return err("TypeError", "object of type '" .. (TYPE_NAME[k] or k)
                .. "' has no len()")
@@ -1227,6 +1318,19 @@ function RT.apy_getiter(v: number): number
     local o = H(v)
     local k = o.k
     if k == "iter" then return v end
+    if k == "range" then
+        local cur, stop, step = o.start, o.stop, o.step
+        return RT.lazy_iter(function()
+            if step > 0 then
+                if cur >= stop then return nil end
+            elseif cur <= stop then
+                return nil
+            end
+            local v2 = RT.box_int(cur)
+            cur += step
+            return v2
+        end)
+    end
     if k == "str" or k == "bytes" then
         local chars = {}
         for i = 1, #o.s do
@@ -1256,10 +1360,42 @@ function RT.apy_step(it: number): number
         return err("TypeError", "'" .. (TYPE_NAME[o.k] or o.k)
                    .. "' object is not an iterator")
     end
+    -- A LAZY iterator carries a closure instead of an array. `range(10**9)`
+    -- must not allocate a billion handles to be walked once, and `enumerate`
+    -- and `zip` are cursors over other iterators rather than copies of them.
+    if o.gen ~= nil then
+        local v = o.gen()
+        if v == nil then return STOP end
+        return v
+    end
     o.i += 1
     local v = o.items[o.i]
     if v == nil then return STOP end
     return v
+end
+
+--- An iterator backed by a closure. `gen` answers the next value, or nil when
+--- exhausted; returning handle 0 from it propagates an error as usual.
+function RT.lazy_iter(gen): number
+    return new({ k = "iter", gen = gen })
+end
+
+--- A range, kept lazy. `start`, `stop` and `step` are Luau numbers: the ABI
+--- passes them as i64 and a range wider than 2^53 is not a thing a program
+--- walks to the end of.
+function RT.range_new(start: number, stop: number, step: number): number
+    return new({ k = "range", start = start, stop = stop, step = step })
+end
+
+--- How many values a range yields. The formula is Python's: an empty range
+--- when the step points away from the stop, never a negative length.
+function RT.range_len(o: any): number
+    if o.step > 0 then
+        if o.stop <= o.start then return 0 end
+        return math.floor((o.stop - o.start - 1) / o.step) + 1
+    end
+    if o.stop >= o.start then return 0 end
+    return math.floor((o.start - o.stop - 1) / -o.step) + 1
 end
 
 -- ── attributes, types and calls ─────────────────────────────────────────────

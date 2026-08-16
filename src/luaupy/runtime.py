@@ -49,6 +49,9 @@ _OBJECTS_MARKER = "@OBJECTS@"
 _MODULES = (
     "objects.luau",     # the foundation: handles, errors, numbers, containers
     "strings.luau",     # str methods
+    "builtins.luau",    # range, sorted, min/max/sum, cursors, list/dict methods
+    "sets.luau",        # set and frozenset, plus update/clear/copy
+    "numbers.luau",     # bit inspection, base conversion, divmod, slice objects
 )
 
 

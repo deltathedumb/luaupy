@@ -62,8 +62,18 @@ end
 local function bounds(n: number, start: number?, stop: number?): (number, number)
     local i = start or 0
     local j = if stop == nil then n else stop
-    if i < 0 then i += n if i < 0 then i = 0 end elseif i > n then i = n end
-    if j < 0 then j += n if j < 0 then j = 0 end elseif j > n then j = n end
+    if i < 0 then
+        i += n
+        if i < 0 then i = 0 end
+    elseif i > n then
+        i = n
+    end
+    if j < 0 then
+        j += n
+        if j < 0 then j = 0 end
+    elseif j > n then
+        j = n
+    end
     return i, j
 end
 
@@ -94,12 +104,14 @@ local function map_bytes(s: string, f): string
 end
 
 function RT.apy_str_upper(v: number): number
-    local s = str_self("upper", v) if s == nil then return 0 end
+    local s = str_self("upper", v)
+    if s == nil then return 0 end
     return RT.box_str(map_bytes(s, to_upper))
 end
 
 function RT.apy_str_lower(v: number): number
-    local s = str_self("lower", v) if s == nil then return 0 end
+    local s = str_self("lower", v)
+    if s == nil then return 0 end
     return RT.box_str(map_bytes(s, to_lower))
 end
 
@@ -109,7 +121,8 @@ function RT.apy_str_casefold(v: number): number
 end
 
 function RT.apy_str_swapcase(v: number): number
-    local s = str_self("swapcase", v) if s == nil then return 0 end
+    local s = str_self("swapcase", v)
+    if s == nil then return 0 end
     return RT.box_str(map_bytes(s, function(b)
         if is_upper(b) then return b + 32 end
         if is_lower(b) then return b - 32 end
@@ -118,7 +131,8 @@ function RT.apy_str_swapcase(v: number): number
 end
 
 function RT.apy_str_capitalize(v: number): number
-    local s = str_self("capitalize", v) if s == nil then return 0 end
+    local s = str_self("capitalize", v)
+    if s == nil then return 0 end
     if #s == 0 then return RT.box_str("") end
     -- The FIRST character up, every other one down -- capitalize() lowercases
     -- the tail, which is what separates it from title() on a single word.
@@ -131,7 +145,8 @@ end
 --- A run is broken by any character that is not a letter, so "it's" titles as
 --- "It'S" -- which looks wrong and is what Python does.
 function RT.apy_str_title(v: number): number
-    local s = str_self("title", v) if s == nil then return 0 end
+    local s = str_self("title", v)
+    if s == nil then return 0 end
     local out, prev_cased = table.create(#s), false
     for i = 1, #s do
         local b = string.byte(s, i)
@@ -161,12 +176,14 @@ local function all_bytes(s: string, pred): boolean
 end
 
 function RT.apy_str_isalpha(v: number): number
-    local s = str_self("isalpha", v) if s == nil then return 0 end
+    local s = str_self("isalpha", v)
+    if s == nil then return 0 end
     return RT.box_bool(all_bytes(s, is_alpha))
 end
 
 function RT.apy_str_isdigit(v: number): number
-    local s = str_self("isdigit", v) if s == nil then return 0 end
+    local s = str_self("isdigit", v)
+    if s == nil then return 0 end
     return RT.box_bool(all_bytes(s, is_digit))
 end
 
@@ -176,21 +193,24 @@ function RT.apy_str_isdecimal(v) return RT.apy_str_isdigit(v) end
 function RT.apy_str_isnumeric(v) return RT.apy_str_isdigit(v) end
 
 function RT.apy_str_isalnum(v: number): number
-    local s = str_self("isalnum", v) if s == nil then return 0 end
+    local s = str_self("isalnum", v)
+    if s == nil then return 0 end
     return RT.box_bool(all_bytes(s, function(b)
         return is_alpha(b) or is_digit(b)
     end))
 end
 
 function RT.apy_str_isspace(v: number): number
-    local s = str_self("isspace", v) if s == nil then return 0 end
+    local s = str_self("isspace", v)
+    if s == nil then return 0 end
     return RT.box_bool(all_bytes(s, is_space))
 end
 
 --- islower(): at least one cased character, and no uppercase. A string of
 --- digits is not lower, which is why this cannot be `s == s:lower()`.
 function RT.apy_str_islower(v: number): number
-    local s = str_self("islower", v) if s == nil then return 0 end
+    local s = str_self("islower", v)
+    if s == nil then return 0 end
     local seen = false
     for i = 1, #s do
         local b = string.byte(s, i)
@@ -201,7 +221,8 @@ function RT.apy_str_islower(v: number): number
 end
 
 function RT.apy_str_isupper(v: number): number
-    local s = str_self("isupper", v) if s == nil then return 0 end
+    local s = str_self("isupper", v)
+    if s == nil then return 0 end
     local seen = false
     for i = 1, #s do
         local b = string.byte(s, i)
@@ -212,7 +233,8 @@ function RT.apy_str_isupper(v: number): number
 end
 
 function RT.apy_str_istitle(v: number): number
-    local s = str_self("istitle", v) if s == nil then return 0 end
+    local s = str_self("istitle", v)
+    if s == nil then return 0 end
     local seen, prev_cased = false, false
     for i = 1, #s do
         local b = string.byte(s, i)
@@ -230,7 +252,8 @@ function RT.apy_str_istitle(v: number): number
 end
 
 function RT.apy_str_isprintable(v: number): number
-    local s = str_self("isprintable", v) if s == nil then return 0 end
+    local s = str_self("isprintable", v)
+    if s == nil then return 0 end
     for i = 1, #s do
         local b = string.byte(s, i)
         if b < 32 or b == 127 then return RT.box_bool(false) end
@@ -239,7 +262,8 @@ function RT.apy_str_isprintable(v: number): number
 end
 
 function RT.apy_str_isascii(v: number): number
-    local s = str_self("isascii", v) if s == nil then return 0 end
+    local s = str_self("isascii", v)
+    if s == nil then return 0 end
     for i = 1, #s do
         if string.byte(s, i) > 127 then return RT.box_bool(false) end
     end
@@ -249,7 +273,8 @@ end
 --- isidentifier() does NOT reject keywords -- `"class".isidentifier()` is True
 --- in Python. It only checks the shape.
 function RT.apy_str_isidentifier(v: number): number
-    local s = str_self("isidentifier", v) if s == nil then return 0 end
+    local s = str_self("isidentifier", v)
+    if s == nil then return 0 end
     if #s == 0 then return RT.box_bool(false) end
     local b = string.byte(s, 1)
     if not (is_alpha(b) or b == 95) then return RT.box_bool(false) end
@@ -281,43 +306,54 @@ local function strip_impl(s: string, chars: string?, left: boolean,
 end
 
 function RT.apy_str_strip(v: number): number
-    local s = str_self("strip", v) if s == nil then return 0 end
+    local s = str_self("strip", v)
+    if s == nil then return 0 end
     return RT.box_str(strip_impl(s, nil, true, true))
 end
 
 function RT.apy_str_lstrip(v: number): number
-    local s = str_self("lstrip", v) if s == nil then return 0 end
+    local s = str_self("lstrip", v)
+    if s == nil then return 0 end
     return RT.box_str(strip_impl(s, nil, true, false))
 end
 
 function RT.apy_str_rstrip(v: number): number
-    local s = str_self("rstrip", v) if s == nil then return 0 end
+    local s = str_self("rstrip", v)
+    if s == nil then return 0 end
     return RT.box_str(strip_impl(s, nil, false, true))
 end
 
 --- The chars argument is a SET of characters to remove, not a prefix. That is
 --- the classic misreading of strip(), and removeprefix() exists because of it.
 function RT.apy_str_strip_chars(v: number, c: number): number
-    local s = str_self("strip", v) if s == nil then return 0 end
-    local chars = arg_str("strip", c) if chars == nil then return 0 end
+    local s = str_self("strip", v)
+    if s == nil then return 0 end
+    local chars = arg_str("strip", c)
+    if chars == nil then return 0 end
     return RT.box_str(strip_impl(s, chars, true, true))
 end
 
 function RT.apy_str_lstrip_chars(v: number, c: number): number
-    local s = str_self("lstrip", v) if s == nil then return 0 end
-    local chars = arg_str("lstrip", c) if chars == nil then return 0 end
+    local s = str_self("lstrip", v)
+    if s == nil then return 0 end
+    local chars = arg_str("lstrip", c)
+    if chars == nil then return 0 end
     return RT.box_str(strip_impl(s, chars, true, false))
 end
 
 function RT.apy_str_rstrip_chars(v: number, c: number): number
-    local s = str_self("rstrip", v) if s == nil then return 0 end
-    local chars = arg_str("rstrip", c) if chars == nil then return 0 end
+    local s = str_self("rstrip", v)
+    if s == nil then return 0 end
+    local chars = arg_str("rstrip", c)
+    if chars == nil then return 0 end
     return RT.box_str(strip_impl(s, chars, false, true))
 end
 
 function RT.apy_str_removeprefix(v: number, p: number): number
-    local s = str_self("removeprefix", v) if s == nil then return 0 end
-    local pre = arg_str("removeprefix", p) if pre == nil then return 0 end
+    local s = str_self("removeprefix", v)
+    if s == nil then return 0 end
+    local pre = arg_str("removeprefix", p)
+    if pre == nil then return 0 end
     if #pre > 0 and string.sub(s, 1, #pre) == pre then
         return RT.box_str(string.sub(s, #pre + 1))
     end
@@ -325,8 +361,10 @@ function RT.apy_str_removeprefix(v: number, p: number): number
 end
 
 function RT.apy_str_removesuffix(v: number, p: number): number
-    local s = str_self("removesuffix", v) if s == nil then return 0 end
-    local suf = arg_str("removesuffix", p) if suf == nil then return 0 end
+    local s = str_self("removesuffix", v)
+    if s == nil then return 0 end
+    local suf = arg_str("removesuffix", p)
+    if suf == nil then return 0 end
     if #suf > 0 and string.sub(s, #s - #suf + 1) == suf then
         return RT.box_str(string.sub(s, 1, #s - #suf))
     end
@@ -367,14 +405,18 @@ end
 
 local function do_find(v: number, sub: number, a: number?, b: number?,
                        reverse: boolean, name: string): number
-    local s = str_self(name, v) if s == nil then return 0 end
-    local needle = arg_str(name, sub) if needle == nil then return 0 end
+    local s = str_self(name, v)
+    if s == nil then return 0 end
+    local needle = arg_str(name, sub)
+    if needle == nil then return 0 end
     local start, stop = nil, nil
     if a ~= nil then
-        start = arg_int(name, a) if start == nil then return 0 end
+        start = arg_int(name, a)
+        if start == nil then return 0 end
     end
     if b ~= nil then
-        stop = arg_int(name, b) if stop == nil then return 0 end
+        stop = arg_int(name, b)
+        if stop == nil then return 0 end
     end
     local i, j = bounds(#s, start, stop)
     local at = if reverse then rfind_in(s, needle, i, j)
@@ -402,13 +444,16 @@ end
 
 local function do_affix(v: number, affix: number, a: number?, b: number?,
                         ends: boolean, name: string): number
-    local s = str_self(name, v) if s == nil then return 0 end
+    local s = str_self(name, v)
+    if s == nil then return 0 end
     local start, stop = nil, nil
     if a ~= nil then
-        start = arg_int(name, a) if start == nil then return 0 end
+        start = arg_int(name, a)
+        if start == nil then return 0 end
     end
     if b ~= nil then
-        stop = arg_int(name, b) if stop == nil then return 0 end
+        stop = arg_int(name, b)
+        if stop == nil then return 0 end
     end
     local i, j = bounds(#s, start, stop)
     local window = string.sub(s, i + 1, j)
@@ -417,11 +462,13 @@ local function do_affix(v: number, affix: number, a: number?, b: number?,
     local cands = {}
     if RT.kindof(affix) == "tuple" then
         for _, e in ipairs(RT.items(affix)) do
-            local t = arg_str(name, e) if t == nil then return 0 end
+            local t = arg_str(name, e)
+            if t == nil then return 0 end
             table.insert(cands, t)
         end
     else
-        local t = arg_str(name, affix) if t == nil then return 0 end
+        local t = arg_str(name, affix)
+        if t == nil then return 0 end
         table.insert(cands, t)
     end
 
@@ -442,14 +489,18 @@ function RT.apy_str_endswith2(v, p, a) return do_affix(v, p, a, nil, true, "ends
 function RT.apy_str_endswith3(v, p, a, b) return do_affix(v, p, a, b, true, "endswith") end
 
 local function do_count(v: number, sub: number, a: number?, b: number?): number
-    local s = str_self("count", v) if s == nil then return 0 end
-    local needle = arg_str("count", sub) if needle == nil then return 0 end
+    local s = str_self("count", v)
+    if s == nil then return 0 end
+    local needle = arg_str("count", sub)
+    if needle == nil then return 0 end
     local start, stop = nil, nil
     if a ~= nil then
-        start = arg_int("count", a) if start == nil then return 0 end
+        start = arg_int("count", a)
+        if start == nil then return 0 end
     end
     if b ~= nil then
-        stop = arg_int("count", b) if stop == nil then return 0 end
+        stop = arg_int("count", b)
+        if stop == nil then return 0 end
     end
     local i, j = bounds(#s, start, stop)
     local window = string.sub(s, i + 1, j)
@@ -543,43 +594,54 @@ local function empty_sep(): number
 end
 
 function RT.apy_str_split_ws(v: number): number
-    local s = str_self("split", v) if s == nil then return 0 end
+    local s = str_self("split", v)
+    if s == nil then return 0 end
     return list_of(split_ws(s, nil))
 end
 
 function RT.apy_str_split(v: number, sep: number): number
-    local s = str_self("split", v) if s == nil then return 0 end
-    local d = arg_str("split", sep) if d == nil then return 0 end
+    local s = str_self("split", v)
+    if s == nil then return 0 end
+    local d = arg_str("split", sep)
+    if d == nil then return 0 end
     if #d == 0 then return empty_sep() end
     return list_of(split_sep(s, d, nil))
 end
 
 function RT.apy_str_split_n(v: number, sep: number, n: number): number
-    local s = str_self("split", v) if s == nil then return 0 end
-    local maxsplit = arg_int("split", n) if maxsplit == nil then return 0 end
+    local s = str_self("split", v)
+    if s == nil then return 0 end
+    local maxsplit = arg_int("split", n)
+    if maxsplit == nil then return 0 end
     -- A negative maxsplit means "no limit", not "zero".
     if maxsplit < 0 then maxsplit = nil end
     if RT.kindof(sep) == "none" then return list_of(split_ws(s, maxsplit)) end
-    local d = arg_str("split", sep) if d == nil then return 0 end
+    local d = arg_str("split", sep)
+    if d == nil then return 0 end
     if #d == 0 then return empty_sep() end
     return list_of(split_sep(s, d, maxsplit))
 end
 
 function RT.apy_str_rsplit_ws(v: number): number
-    local s = str_self("rsplit", v) if s == nil then return 0 end
+    local s = str_self("rsplit", v)
+    if s == nil then return 0 end
     return list_of(split_ws(s, nil))
 end
 
 function RT.apy_str_rsplit(v: number, sep: number): number
-    local s = str_self("rsplit", v) if s == nil then return 0 end
-    local d = arg_str("rsplit", sep) if d == nil then return 0 end
+    local s = str_self("rsplit", v)
+    if s == nil then return 0 end
+    local d = arg_str("rsplit", sep)
+    if d == nil then return 0 end
     if #d == 0 then return empty_sep() end
     return list_of(split_sep(s, d, nil))
 end
 
 function RT.apy_str_rsplit_n(v: number, sep: number, n: number): number
-    local s = str_self("rsplit", v) if s == nil then return 0 end
-    local maxsplit = arg_int("rsplit", n) if maxsplit == nil then return 0 end
+    local s = str_self("rsplit", v)
+    if s == nil then return 0 end
+    local maxsplit = arg_int("rsplit", n)
+    if maxsplit == nil then return 0 end
     if maxsplit < 0 then maxsplit = nil end
     if RT.kindof(sep) == "none" then
         -- rsplit on whitespace with a limit keeps the LAST n fields.
@@ -594,7 +656,8 @@ function RT.apy_str_rsplit_n(v: number, sep: number, n: number): number
         for i = #head - keep + 1, #head do table.insert(out, head[i]) end
         return list_of(out)
     end
-    local d = arg_str("rsplit", sep) if d == nil then return 0 end
+    local d = arg_str("rsplit", sep)
+    if d == nil then return 0 end
     if #d == 0 then return empty_sep() end
     return list_of(rsplit_sep(s, d, maxsplit))
 end
@@ -626,20 +689,24 @@ local function splitlines(s: string, keepends: boolean): { string }
 end
 
 function RT.apy_str_splitlines(v: number): number
-    local s = str_self("splitlines", v) if s == nil then return 0 end
+    local s = str_self("splitlines", v)
+    if s == nil then return 0 end
     return list_of(splitlines(s, false))
 end
 
 function RT.apy_str_splitlines_keep(v: number, keep: number): number
-    local s = str_self("splitlines", v) if s == nil then return 0 end
+    local s = str_self("splitlines", v)
+    if s == nil then return 0 end
     local _, t = RT.apy_truth(keep)
     return list_of(splitlines(s, t ~= 0))
 end
 
 local function partition(v: number, sep: number, reverse: boolean): number
     local name = if reverse then "rpartition" else "partition"
-    local s = str_self(name, v) if s == nil then return 0 end
-    local d = arg_str(name, sep) if d == nil then return 0 end
+    local s = str_self(name, v)
+    if s == nil then return 0 end
+    local d = arg_str(name, sep)
+    if d == nil then return 0 end
     if #d == 0 then return empty_sep() end
     local at = if reverse then rfind_in(s, d, 0, #s) else find_in(s, d, 0, #s)
     local T = RT.apy_tuple_new(0, 0)
@@ -668,7 +735,8 @@ function RT.apy_str_rpartition(v, sep) return partition(v, sep, true) end
 -- ── joining and replacing ───────────────────────────────────────────────────
 
 function RT.apy_str_join(v: number, seq: number): number
-    local sep = str_self("join", v) if sep == nil then return 0 end
+    local sep = str_self("join", v)
+    if sep == nil then return 0 end
     local it = RT.apy_getiter(seq)
     if it == 0 then return 0 end
     local parts = {}
@@ -721,18 +789,25 @@ local function replace_impl(s: string, old: string, new: string,
 end
 
 function RT.apy_str_replace(v: number, old: number, new: number): number
-    local s = str_self("replace", v) if s == nil then return 0 end
-    local a = arg_str("replace", old) if a == nil then return 0 end
-    local b = arg_str("replace", new) if b == nil then return 0 end
+    local s = str_self("replace", v)
+    if s == nil then return 0 end
+    local a = arg_str("replace", old)
+    if a == nil then return 0 end
+    local b = arg_str("replace", new)
+    if b == nil then return 0 end
     return RT.box_str(replace_impl(s, a, b, nil))
 end
 
 function RT.apy_str_replace_n(v: number, old: number, new: number,
                               n: number): number
-    local s = str_self("replace", v) if s == nil then return 0 end
-    local a = arg_str("replace", old) if a == nil then return 0 end
-    local b = arg_str("replace", new) if b == nil then return 0 end
-    local count = arg_int("replace", n) if count == nil then return 0 end
+    local s = str_self("replace", v)
+    if s == nil then return 0 end
+    local a = arg_str("replace", old)
+    if a == nil then return 0 end
+    local b = arg_str("replace", new)
+    if b == nil then return 0 end
+    local count = arg_int("replace", n)
+    if count == nil then return 0 end
     if count < 0 then count = nil end       -- negative means "all"
     return RT.box_str(replace_impl(s, a, b, count))
 end
@@ -743,8 +818,10 @@ end
 --- The two mapping arguments must be the same length; the third is optional
 --- and its characters map to None, which translate() drops.
 function RT.apy_str_maketrans(a: number, b: number, c: number): number
-    local from = arg_str("maketrans", a) if from == nil then return 0 end
-    local to = arg_str("maketrans", b) if to == nil then return 0 end
+    local from = arg_str("maketrans", a)
+    if from == nil then return 0 end
+    local to = arg_str("maketrans", b)
+    if to == nil then return 0 end
     if #from ~= #to then
         return RT.err("ValueError",
                       "the first two maketrans arguments must have equal length")
@@ -755,7 +832,8 @@ function RT.apy_str_maketrans(a: number, b: number, c: number): number
                         RT.box_int(string.byte(to, i)))
     end
     if c ~= nil and c ~= 0 and RT.kindof(c) ~= "none" then
-        local drop = arg_str("maketrans", c) if drop == nil then return 0 end
+        local drop = arg_str("maketrans", c)
+        if drop == nil then return 0 end
         for i = 1, #drop do
             RT.apy_dict_set(D, RT.box_int(string.byte(drop, i)), RT.apy_none())
         end
@@ -766,7 +844,8 @@ end
 --- translate(table): each ordinal is looked up; a missing key leaves the
 --- character alone, None deletes it, an int is an ordinal, a str is inserted.
 function RT.apy_str_translate(v: number, table_: number): number
-    local s = str_self("translate", v) if s == nil then return 0 end
+    local s = str_self("translate", v)
+    if s == nil then return 0 end
     if RT.kindof(table_) ~= "dict" then
         return RT.err("TypeError",
                       "'" .. RT.kindof(table_) .. "' object is not subscriptable")
@@ -819,10 +898,12 @@ end
 -- ── justification ───────────────────────────────────────────────────────────
 
 local function pad_arg(name: string, w: number, f: number?): (number?, string?)
-    local width = arg_int(name, w) if width == nil then return nil, nil end
+    local width = arg_int(name, w)
+    if width == nil then return nil, nil end
     local fill = " "
     if f ~= nil then
-        local got = arg_str(name, f) if got == nil then return nil, nil end
+        local got = arg_str(name, f)
+        if got == nil then return nil, nil end
         if #got ~= 1 then
             RT.err("TypeError",
                    "The fill character must be exactly one character long")
@@ -835,7 +916,8 @@ end
 
 local function do_just(v: number, w: number, f: number?, name: string,
                        where: string): number
-    local s = str_self(name, v) if s == nil then return 0 end
+    local s = str_self(name, v)
+    if s == nil then return 0 end
     local width, fill = pad_arg(name, w, f)
     if width == nil then return 0 end
     local pad = width - #s
@@ -861,8 +943,10 @@ function RT.apy_str_center_fill(v, w, f) return do_just(v, w, f, "center", "cent
 --- zfill(): zero-pads on the left, but a leading sign stays in front of the
 --- zeros -- "-3".zfill(5) is "-0003", not "00-3".
 function RT.apy_str_zfill(v: number, w: number): number
-    local s = str_self("zfill", v) if s == nil then return 0 end
-    local width = arg_int("zfill", w) if width == nil then return 0 end
+    local s = str_self("zfill", v)
+    if s == nil then return 0 end
+    local width = arg_int("zfill", w)
+    if width == nil then return 0 end
     local pad = width - #s
     if pad <= 0 then return RT.box_str(s) end
     local sign = ""
